@@ -157,6 +157,14 @@ func ExtractDnsServerHostsFromTemplate(tmpl *Template) []string {
 }
 
 func parseDnsAddr(addr string) Addr {
+	if addr == "localhost" {
+        return Addr{
+            host: "127.0.0.1",
+            port: "53",
+            udp:  true,
+        }
+    }
+	
 	// 223.5.5.5
 	if net.ParseIP(addr) != nil {
 		return Addr{
@@ -168,6 +176,9 @@ func parseDnsAddr(addr string) Addr {
 	// dns.google:53
 	if host, port, err := net.SplitHostPort(addr); err == nil {
 		if _, err = strconv.Atoi(port); err == nil {
+			if host == "localhost" {
+                host = "127.0.0.1"
+            }
 			return Addr{
 				host: host,
 				port: port,
