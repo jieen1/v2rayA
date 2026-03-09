@@ -406,7 +406,7 @@ func (t *Template) setDNS(outbounds []serverInfo, supportUDP map[string]bool) (r
 	}
 
 	if t.DNS.Servers == nil {
-		t.DNS.Servers = []interface{}{"localhost"}
+		t.DNS.Servers = []interface{}{"127.0.0.1"}
 	}
 	var domainsToLookup []string
 	// Collect domains from outbound servers
@@ -1337,7 +1337,7 @@ func (t *Template) setInbound(setting *configure.Setting) error {
 			t.Inbounds = append(t.Inbounds, coreObj.Inbound{
 				Port:     tun.TunDNSListenPort,
 				Protocol: "dokodemo-door",
-				Listen:   "localhost",
+				Listen:   "127.0.0.1",
 				Settings: &coreObj.InboundSettings{
 					Network: "tcp,udp",
 					Address: "127.0.0.1",
