@@ -38,7 +38,17 @@
           </b-dropdown>
         </b-navbar-item>
       </template>
-      <template slot="start"></template>
+      <template slot="start">
+        <b-navbar-item v-if="trafficStats && runningState.running === $t('common.isRunning')" tag="div" class="traffic-stats-item">
+          <div class="traffic-stats">
+            <span class="traffic-up" title="Upload speed">↑ {{ formatSpeed(trafficStats.uplink) }}</span>
+            <span class="traffic-down" title="Download speed">↓ {{ formatSpeed(trafficStats.downlink) }}</span>
+            <span class="traffic-total" :title="'Total: ↑ ' + formatBytes(trafficStats.uplinkTotal) + '  ↓ ' + formatBytes(trafficStats.downlinkTotal)">
+              ↑{{ formatBytes(trafficStats.uplinkTotal) }} ↓{{ formatBytes(trafficStats.downlinkTotal) }}
+            </span>
+          </div>
+        </b-navbar-item>
+      </template>
 
       <template slot="end">
         <!--        <b-navbar-item tag="router-link" to="/node" :active="nav === 'node'">-->
@@ -110,6 +120,7 @@ export default {
     return {
       ws: null,
       observatory: null,
+      trafficStats: null,
       showSidebar: true,
       statusMap: {
         [this.$t("common.checkRunning")]: "is-light",
@@ -267,7 +278,31 @@ export default {
         msg.body.outboundName === this.outboundName
       ) {
         this.observatory = msg;
+      } else if (msg.type === "traffic") {
+        this.trafficStats = msg.body;
       }
+    },
+    formatSpeed(bytesPerSec) {
+      if (!bytesPerSec || bytesPerSec <= 0) return "0 B/s";
+      if (bytesPerSec >= 1024 * 1024 * 1024) {
+        return (bytesPerSec / (1024 * 1024 * 1024)).toFixed(2) + " GB/s";
+      } else if (bytesPerSec >= 1024 * 1024) {
+        return (bytesPerSec / (1024 * 1024)).toFixed(2) + " MB/s";
+      } else if (bytesPerSec >= 1024) {
+        return (bytesPerSec / 1024).toFixed(1) + " KB/s";
+      }
+      return bytesPerSec + " B/s";
+    },
+    formatBytes(bytes) {
+      if (!bytes || bytes <= 0) return "0 B";
+      if (bytes >= 1024 * 1024 * 1024) {
+        return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+      } else if (bytes >= 1024 * 1024) {
+        return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+      } else if (bytes >= 1024) {
+        return (bytes / 1024).toFixed(1) + " KB";
+      }
+      return bytes + " B";
     },
     handleOutboundDropdownActiveChange(active) {
       if (active) {
@@ -653,6 +688,35 @@ a {
 
 #statusTag {
   width: 5em;
+}
+
+.traffic-stats-item {
+  padding: 0 0.5rem;
+}
+
+.traffic-stats {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.72em;
+  line-height: 1.3;
+  color: #555;
+  min-width: 80px;
+}
+
+.traffic-up {
+  color: #e05c00;
+  white-space: nowrap;
+}
+
+.traffic-down {
+  color: #0077cc;
+  white-space: nowrap;
+}
+
+.traffic-total {
+  color: #888;
+  font-size: 0.85em;
+  white-space: nowrap;
 }
 
 .dropdown-menu .is-fullwidth {

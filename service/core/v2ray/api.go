@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/v2fly/v2ray-core/v5/app/observatory"
 	pb "github.com/v2fly/v2ray-core/v5/app/observatory/command"
+	statspb "github.com/v2fly/v2ray-core/v5/app/stats/command"
 	"github.com/v2rayA/v2rayA/db/configure"
 	"github.com/v2rayA/v2rayA/pkg/util/log"
 	"google.golang.org/grpc"
@@ -20,6 +21,7 @@ import (
 var (
 	ApiProducts = []string{
 		"observatory",
+		"traffic",
 	}
 	ApiFeed *Feed
 )
@@ -71,6 +73,98 @@ func getObservatoryResponses(conn *grpc.ClientConn, observatoryTags []string) (r
 		r = append(r, ObservatoryResp{OutboundName: tag, Resp: resp})
 	}
 	return r, nil
+}
+
+// TrafficStats holds cumulative and rate traffic data.
+type TrafficStats struct {
+	// Uplink is upload bytes per second since last poll.
+	Uplink int64 `json:"uplink"`
+	// Downlink is download bytes per second since last poll.
+	Downlink int64 `json:"downlink"`
+	// UplinkTotal is cumulative upload bytes since v2ray started.
+	UplinkTotal int64 `json:"uplinkTotal"`
+	// DownlinkTotal is cumulative download bytes since v2ray started.
+	DownlinkTotal int64 `json:"downlinkTotal"`
+}
+
+// TrafficProducer periodically polls v2ray-core StatsService for traffic counters and
+// publishes TrafficStats to ApiFeed as product "traffic".
+func TrafficProducer(apiPort int) (closeFunc func()) {
+	closed := make(chan struct{})
+	go func() {
+		const product = "traffic"
+		var conn *grpc.ClientConn
+		var uplinkTotal, downlinkTotal int64
+	nextLoop:
+		for {
+			select {
+			case <-closed:
+				return
+			default:
+			}
+			p := ProcessManager.Process()
+			if p == nil {
+				time.Sleep(ApiFeedInterval)
+				continue
+			}
+			if conn == nil {
+				ctx, cancel := context.WithTimeout(context.Background(), ApiFeedInterval)
+				c, err := grpc.DialContext(
+					ctx,
+					net.JoinHostPort("127.0.0.1", strconv.Itoa(apiPort)),
+					grpc.WithInsecure(),
+					grpc.WithBlock(),
+				)
+				cancel()
+				if err != nil {
+					log.Warn("TrafficProducer: did not connect: %v", err)
+					continue nextLoop
+				}
+				conn = c
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), ApiFeedInterval)
+			sc := statspb.NewStatsServiceClient(conn)
+			// Query with Reset_=true returns bytes since last query (delta), enabling rate calculation.
+			resp, err := sc.QueryStats(ctx, &statspb.QueryStatsRequest{
+				Pattern: "traffic",
+				Reset_:  true,
+			})
+			cancel()
+			if err != nil {
+				if status.Code(err) == codes.Unavailable {
+					conn = nil
+					continue nextLoop
+				}
+				log.Warn("TrafficProducer: %v", err)
+				time.Sleep(ApiFeedInterval)
+				continue
+			}
+			var upDelta, downDelta int64
+			for _, s := range resp.GetStat() {
+				name := s.GetName()
+				val := s.GetValue()
+				if len(name) > 8 && name[len(name)-6:] == "uplink" {
+					upDelta += val
+				} else if len(name) > 10 && name[len(name)-8:] == "downlink" {
+					downDelta += val
+				}
+			}
+			uplinkTotal += upDelta
+			downlinkTotal += downDelta
+			msg := TrafficStats{
+				// Divide by interval seconds to get bytes/second rate.
+				Uplink:        upDelta / int64(ApiFeedInterval/time.Second),
+				Downlink:      downDelta / int64(ApiFeedInterval/time.Second),
+				UplinkTotal:   uplinkTotal,
+				DownlinkTotal: downlinkTotal,
+			}
+			ApiFeed.ProductMessage(product, msg)
+			time.Sleep(ApiFeedInterval)
+		}
+	}()
+	return func() {
+		close(closed)
+	}
 }
 
 // ObservatoryProducer monitors outbound status via gRPC API and publishes to ApiFeed.
