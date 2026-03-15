@@ -124,9 +124,10 @@ func TrafficProducer(apiPort int) (closeFunc func()) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), ApiFeedInterval)
 			sc := statspb.NewStatsServiceClient(conn)
-			// Query with Reset_=true returns bytes since last query (delta), enabling rate calculation.
+			// Query outbound traffic only (avoids double-counting with inbound stats).
+			// Reset_=true returns bytes since last query (delta), enabling rate calculation.
 			resp, err := sc.QueryStats(ctx, &statspb.QueryStatsRequest{
-				Pattern: "traffic",
+				Pattern: "outbound>>>",
 				Reset_:  true,
 			})
 			cancel()
@@ -143,9 +144,11 @@ func TrafficProducer(apiPort int) (closeFunc func()) {
 			for _, s := range resp.GetStat() {
 				name := s.GetName()
 				val := s.GetValue()
-				if len(name) > 8 && name[len(name)-6:] == "uplink" {
+				// Stat names: "outbound>>>TAG>>>traffic>>>uplink" / "...>>>downlink"
+				switch {
+				case len(name) > 6 && name[len(name)-6:] == "uplink":
 					upDelta += val
-				} else if len(name) > 10 && name[len(name)-8:] == "downlink" {
+				case len(name) > 8 && name[len(name)-8:] == "downlink":
 					downDelta += val
 				}
 			}

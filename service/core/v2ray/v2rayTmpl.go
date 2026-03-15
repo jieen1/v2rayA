@@ -1824,14 +1824,12 @@ func (t *Template) SetAPI(serverData *ServerData) (port int, err error) {
 			}
 		}
 	}
-	// Enable traffic statistics via StatsService.
+	// Enable traffic statistics via StatsService (outbound only, avoids double-counting).
 	services = append(services, "StatsService")
 	t.Stats = &coreObj.Stats{}
 	t.Policy = &coreObj.Policy{}
 	t.Policy.System.StatsOutboundUplink = true
 	t.Policy.System.StatsOutboundDownlink = true
-	t.Policy.System.StatsInboundUplink = true
-	t.Policy.System.StatsInboundDownlink = true
 	t.ApiCloses = append(t.ApiCloses, TrafficProducer(port))
 
 	t.API = &coreObj.APIObject{
