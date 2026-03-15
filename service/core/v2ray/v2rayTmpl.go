@@ -52,6 +52,8 @@ type Template struct {
 	MultiObservatory *coreObj.MultiObservatory `json:"multiObservatory,omitempty"`
 	Observatory      *coreObj.ObservatoryItem  `json:"observatory,omitempty"`
 	API              *coreObj.APIObject        `json:"api,omitempty"`
+	Policy           *coreObj.Policy           `json:"policy,omitempty"`
+	Stats            *coreObj.Stats            `json:"stats,omitempty"`
 
 	Variant               where.Variant          `json:"-"`
 	CoreVersion           string                 `json:"-"`
@@ -1822,6 +1824,14 @@ func (t *Template) SetAPI(serverData *ServerData) (port int, err error) {
 			}
 		}
 	}
+	// Enable traffic statistics via StatsService (outbound only, avoids double-counting).
+	services = append(services, "StatsService")
+	t.Stats = &coreObj.Stats{}
+	t.Policy = &coreObj.Policy{}
+	t.Policy.System.StatsOutboundUplink = true
+	t.Policy.System.StatsOutboundDownlink = true
+	t.ApiCloses = append(t.ApiCloses, TrafficProducer(port))
+
 	t.API = &coreObj.APIObject{
 		Tag:      "api-out",
 		Services: services,
